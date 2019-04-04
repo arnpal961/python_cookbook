@@ -1,8 +1,7 @@
 # plydemo.py
 # --- Sample
 
-from ply.lex import lex
-from ply.yacc import yacc
+from sly import Lexer, Parser
 
 code = """
 a = 3 * 4 + 5
@@ -10,100 +9,62 @@ print(a)
 """
 
 # ----- Tokens
-tokens = ("ID", "NUM", "PLUS", "TIMES", "EQ", "LPAREN", "RPAREN", "PRINT")
+class MyLexer(Lexer):
+    tokens = {ID, NUM, PLUS, TIMES, 
+              EQ, LPAREN, RPAREN, PRINT}
+              
+    ID = r'[a-zA-Z_][a-zA-Z0-9_]*'
+    NUM = r'[0-9]+'
+    PLUS = r'\+'
+    TIMES = r'\*'
+    EQ = r'='
+    LPAREN = r'\('
+    RPAREN = r'\)'
+    ID['print'] = PRINT
+    ignore = ' \t'
 
+    def NUM(self, t):
+        t.value = int(t.value)
+        return t
 
-def t_ID(t):
-    r"[a-zA-Z_][a-zA-Z0-9_]*"
-    if t.value == "print":
-        t.type = "PRINT"
-    return t
-
-
-def t_NUM(t):
-    r"[0-9]+"
-    t.value = int(t.value)
-    return t
-
-
-t_PLUS = r"\+"
-t_TIMES = r"\*"
-t_EQ = r"="
-t_LPAREN = r"\("
-t_RPAREN = r"\)"
-# t_PRINT = r'print'
-t_ignore = " \t"
-
-
-def t_error(t):
-    print(f"Illegal character {t.value[0]!r}")
-    t.lexer.skip(1)
-
-
-lexer = lex()
+lexer = MyLexer()
 
 # --- Grammar
+class MyParser(Parser):
+    tokens = MyLexer.tokens
 
+    precedence = (
+        ('left', PLUS),
+        ('left', TIMES)
+    )
+    
+    @_('statements statement')
+    def statements(self, p):
+        return p.statements + [ p.statement ]
 
-def p_statements_multiple(p):
-    """
-    statements : statements statement
-    """
-    p[0] = p[1] + [p[2]]
+    @_('statement')
+    def statements(self, p):
+        return [ p.statement ]
+    
+    @_('ID EQ expr')
+    def statement(self, p):
+        return ('assign', p.ID, p.expr)
+    
+    @_('PRINT LPAREN expr RPAREN')
+    def statement(self, p):
+        return ('print', p.expr)
+    
+    @_('expr PLUS expr',
+       'expr TIMES expr')
+    def expr(self, p):
+        return (p[1], p.expr0, p.expr1)
+    
+    @_('NUM')
+    def expr(self, p):
+        return ('num', p.NUM)
+    
+    @_('ID')
+    def expr(self, p):
+        return ('id', p.ID)
 
-
-def p_statements_single(p):
-    """
-    statements : statement
-    """
-    p[0] = [p[1]]
-
-
-def p_assignment_statement(p):
-    """
-    statement : ID EQ expr
-    """
-    p[0] = ('assign', p[1], p[3])
-
-
-def p_print_statement(p):
-    """
-    statement : PRINT LPAREN expr RPAREN
-    """
-    p[0] = ('print', p[3])
-
-
-def p_expr_binop(p):
-    """
-    expr : expr PLUS expr
-         | expr TIMES expr
-    """
-    p[0] = (p[2],p[1], p[3])
-
-
-def p_expr_num(p):
-    """
-    expr : NUM
-    """
-    p[0] = ('num', p[1])
-
-
-def p_expr_name(p):
-    """
-    expr : ID
-    """
-    p[0] = ('id', p[1])
-
-
-def p_expr_group(p):
-    """
-    expr : LPAREN expr RPAREN
-    """
-    p[0] = p[2]
-
-precedence = (
-    ('left', 'PLUS'),
-    ('left', 'TIMES')
-)
-
-parser = yacc()
+parser = MyParser()
